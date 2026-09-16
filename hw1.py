@@ -75,14 +75,6 @@ def build_chain() -> Any:
             "DEEPSEEK_API_KEY is missing. Put it in .env before running hw1.py."
         )
 
-    class DiscountLine(BaseModel):
-        """One discount shown before the receipt's SUBTOTAL line."""
-
-        label: str = Field(description="The printed label of the discount line")
-        amount: Decimal = Field(
-            description="The signed HKD amount printed on that line, normally negative"
-        )
-
     class ReceiptExtraction(BaseModel):
         """Amounts needed to answer both homework questions for one receipt."""
 
@@ -95,8 +87,11 @@ def build_chain() -> Any:
         rounding_adjustment: Decimal = Field(
             description="The signed ROUNDING amount, or 0 when no rounding is printed"
         )
-        discount_lines: list[DiscountLine] = Field(
-            description="Every discount/promotion/coupon line before SUBTOTAL; exclude ROUNDING"
+        discount_lines: list[Decimal] = Field(
+            description=(
+                "Signed HKD amounts for every discount/promotion/coupon line before "
+                "SUBTOTAL; exclude ROUNDING"
+            )
         )
 
     prompt = ChatPromptTemplate.from_messages(
@@ -104,7 +99,8 @@ def build_chain() -> Any:
             (
                 "system",
                 """You extract monetary fields from one Hong Kong supermarket receipt.
-Read the receipt image carefully and return only the requested structured data.
+Read the receipt image carefully and return only one valid JSON object matching the
+provided schema. Do not wrap the JSON in Markdown fences and do not add prose.
 
 Rules:
 1. amount_paid_after_rounding is the final tender/payment amount immediately after
@@ -113,9 +109,10 @@ Rules:
 2. subtotal_after_discounts_before_rounding is the SUBTOTAL shown immediately before
    ROUNDING. It already includes all discounts.
 3. rounding_adjustment is only the signed amount on the ROUNDING line.
-4. discount_lines must contain every negative discount, promotion, coupon, member,
-   app, percentage-off, multi-buy saving, or packaging-damage reduction printed in
-   the item/discount area before SUBTOTAL. Keep each signed amount exactly as printed.
+4. discount_lines must be a JSON array of numbers containing every negative discount,
+   promotion, coupon, member, app, percentage-off, multi-buy saving, or packaging-
+   damage reduction printed in the item/discount area before SUBTOTAL. Keep each
+   signed amount exactly as printed; for example: [-12.40, -5.39].
 5. Never include ROUNDING in discount_lines. Never include payment, change, balances,
    points, dates, quantities, unit prices, or ordinary positive item prices.
 6. A zero-value coupon is not a discount. If there are no discounts, return an empty list.
@@ -227,8 +224,7 @@ def answer_queries(chain: Any, images: list[Path]) -> dict[str, Any]:
         discount_total = Decimal("0")
 
         for discount in value(extraction, "discount_lines"):
-            amount = Decimal(str(value(discount, "amount")))
-            discount_total += abs(amount)
+            discount_total += abs(Decimal(str(discount)))
 
         total_paid += paid
         total_without_discounts += subtotal + discount_total
