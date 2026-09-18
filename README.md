@@ -48,6 +48,36 @@ DeepSeek Flash model. JPEG, PNG, GIF, and WebP inputs are accepted by the
 homework runner.
 
 
-## Homework 1 solution: 
-> to students: please fill your solution description here.
+## Homework 1 solution
 
+### Chain design
+
+```mermaid
+flowchart TD
+    A[Load and sort all receipt images] --> B[Encode each image as a data URL]
+    B --> C[Create independent multimodal requests]
+    C --> D[Process receipts concurrently with<br/>DeepSeek V4 Flash Vision and LangChain]
+    D --> E[Extract structured JSON fields:<br/>final payment, subtotal, rounding, discounts]
+    E --> F{Does subtotal + rounding<br/>equal final payment?}
+    F -- No --> G[Retry only the failed or<br/>inconsistent receipt]
+    G --> E
+    F -- Yes --> H[Use Python Decimal to aggregate<br/>payments and pre-discount totals]
+    H --> I[Format exactly one HKD amount<br/>for each required question]
+    I --> J[Write query, model response,<br/>and correctness to results.csv]
+```
+
+### Solution description
+
+The solution uses LangChain with `deepseek-v4-flash-vision-exp` to process
+each supermarket receipt as an independent multimodal request. The prompt asks
+the model to return structured JSON containing the final payment after
+rounding, the subtotal before rounding, the rounding adjustment, and every
+eligible discount amount. Independent receipts are processed concurrently to
+reduce end-to-end latency. After extraction, the program performs a
+deterministic consistency check by verifying that the subtotal plus the
+rounding adjustment equals the final payment; only a failed or inconsistent
+receipt is retried. The two folder-level answers are then calculated with
+Python `Decimal` arithmetic instead of relying on the language model for
+addition, which avoids floating-point errors and makes the aggregation easier
+to verify. Finally, each response is formatted as exactly one HKD amount so it
+can be evaluated reliably by the provided scoring script.
